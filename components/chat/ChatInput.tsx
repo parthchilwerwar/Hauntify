@@ -1,11 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { Send } from "lucide-react"
+import { Send, ArrowUp } from "lucide-react"
 import { useChatStream } from "@/src/hooks/useChatStream"
 import { useSessionStore } from "@/src/store/session"
 import { detectLanguage } from "@/src/lib/languageSupport"
-import { FaArrowTurnUp } from "react-icons/fa6";
 
 export function ChatInput() {
   const [input, setInput] = useState("")
@@ -48,7 +47,7 @@ export function ChatInput() {
           disabled={isStreaming || !input.trim() || isOverLimit}
           className="bg-linear-to-r from-orange-600 to-orange-500 text-white px-5 py-3 rounded-lg font-semibold hover:from-orange-500 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg shadow-orange-500/20 hover:shadow-orange-500/30 flex items-center gap-2"
         >
-          <FaArrowTurnUp size={18} />
+          <ArrowUp size={18} />
         </button>
       </div>
     </div>
