@@ -44,18 +44,22 @@
 
 <div align="center">
 
-<!-- Add your demo GIF or video here -->
-<!-- ![Hauntify Demo](./docs/demo.gif) -->
+[![Hauntify Demo Video](https://img.youtube.com/vi/mZdsxvG-2O0/maxresdefault.jpg)](https://youtu.be/mZdsxvG-2O0)
 
-**[🔗 Live Demo](https://hauntify.vercel.app)** • **[📺 Video Walkthrough](#)**
+**[🔗 Live Demo](https://hauntify.vercel.app)** • **[📺 Video Walkthrough](https://youtu.be/mZdsxvG-2O0)** • **[🐦 Twitter/X Post](https://x.com/doodle_jaxkarth/status/1996883028413739178)**
 
 </div>
 
 ### Screenshots
 
+<div align="center">
+
 | Landing Page | Story Generation | Map Visualization |
 |:---:|:---:|:---:|
+| ![Landing Page](./public/c6019cd0-f910-4032-9745-93c670e6e6b1.png) | ![Story Generation](./public/screencapture-localhost-3000-dashboard-2025-12-05-15_08_49.png) | ![Map Visualization](./public/screencapture-localhost-3000-dashboard-2025-12-05-15_09_54.png) |
 | Dark horror-themed landing | Real-time AI streaming | Interactive location markers |
+
+</div>
 
 ## ✨ Features
 
