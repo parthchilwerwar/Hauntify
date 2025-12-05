@@ -1,0 +1,9 @@
+/* Fix for Leaflet marker icons in Next.js */
+.leaflet-default-icon-path {
+  background-image: url(https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png);
+}
+
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
+}
