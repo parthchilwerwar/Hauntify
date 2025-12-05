@@ -31,7 +31,14 @@ export class AudioQueueManager {
       this.currentAudio = new Audio()
       this.currentAudio.addEventListener("ended", () => this.playNext())
       this.currentAudio.addEventListener("timeupdate", () => this.notifyTimeUpdate())
-      this.currentAudio.addEventListener("error", (e) => this.handleError(e))
+      this.currentAudio.addEventListener("error", (e) => {
+        // Only handle errors when we actually have audio loaded with a valid blob URL
+        const audio = e.target as HTMLAudioElement
+        if (audio && audio.src && audio.src.startsWith('blob:') && this.queue.length > 0) {
+          this.handleError(e)
+        }
+        // Silently ignore errors when there's no real audio source
+      })
     }
   }
 

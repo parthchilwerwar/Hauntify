@@ -11,15 +11,13 @@ export function useChatStream() {
   const [error, setError] = useState<string | null>(null)
   const fullResponseRef = useRef<string>("")
   
-  const {
-    messages,
-    addMessage,
-    appendToLastMessage,
-    addTimelineItem,
-    setStreaming,
-    addAudioToQueue,
-    setGeneratingVoice,
-  } = useSessionStore()
+  const messages = useSessionStore((state) => state.messages)
+  const addMessage = useSessionStore((state) => state.addMessage)
+  const appendToLastMessage = useSessionStore((state) => state.appendToLastMessage)
+  const addTimelineItem = useSessionStore((state) => state.addTimelineItem)
+  const setStreaming = useSessionStore((state) => state.setStreaming)
+  const addAudioToQueue = useSessionStore((state) => state.addAudioToQueue)
+  const setGeneratingVoice = useSessionStore((state) => state.setGeneratingVoice)
 
   const sendMessage = useCallback(
     async (content: string) => {

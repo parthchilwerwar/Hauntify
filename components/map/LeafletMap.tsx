@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState, memo } from "react"
 import type { TimelineItem } from "@/src/types"
 import { isValidCenter, getSafeCenter } from "@/src/lib/validation"
 
@@ -13,180 +13,175 @@ interface LeafletMapProps {
 const DEFAULT_CENTER: [number, number] = [20, 0]
 const DEFAULT_ZOOM = 2
 
-export default function LeafletMap({ markers, center, zoom }: LeafletMapProps) {
-  const mapRef = useRef<any>(null)
+function LeafletMapComponent({ markers, center, zoom }: LeafletMapProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
   const markersLayerRef = useRef<any>(null)
+  const leafletRef = useRef<any>(null)
+  const isInitialMount = useRef(true)
+  const prevCenterRef = useRef<[number, number] | null>(null)
+  const [mapReady, setMapReady] = useState(false)
 
-  // Validate props
-  const safeCenter = getSafeCenter(center, DEFAULT_CENTER)
+  // Validate and sanitize coordinates - ensure they are valid numbers
+  const centerLat = (typeof center?.[0] === 'number' && isFinite(center[0]) && !Number.isNaN(center[0])) 
+    ? center[0] 
+    : DEFAULT_CENTER[0]
+  const centerLng = (typeof center?.[1] === 'number' && isFinite(center[1]) && !Number.isNaN(center[1])) 
+    ? center[1] 
+    : DEFAULT_CENTER[1]
   const safeZoom = typeof zoom === "number" && isFinite(zoom) && zoom > 0 ? zoom : DEFAULT_ZOOM
 
+  // Initialize map only once
   useEffect(() => {
     if (typeof window === "undefined") return
+    if (!mapContainerRef.current) return
+    if (mapInstanceRef.current) return
 
-    try {
-      const L = require("leaflet")
-      // Note: Leaflet CSS is loaded via CDN in app/layout.tsx
+    let cancelled = false
 
-      if (!mapInstanceRef.current && mapRef.current) {
-        const map = L.map(mapRef.current, {
-          center: safeCenter,
+    const init = async () => {
+      try {
+        const L = (await import("leaflet")).default
+        
+        if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return
+
+        leafletRef.current = L
+
+        const map = L.map(mapContainerRef.current, {
+          center: [centerLat, centerLng],
           zoom: safeZoom,
-          zoomControl: false,        // Disable zoom controls (+/-)
-          attributionControl: false, // Disable attribution watermark
+          zoomControl: false,
+          attributionControl: false,
         })
 
-        // Dark theme map tiles for horror atmosphere
         L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-          attribution: '',
           maxZoom: 19,
-          subdomains: 'abcd',
+          subdomains: "abcd",
         }).addTo(map)
 
         markersLayerRef.current = L.layerGroup().addTo(map)
         mapInstanceRef.current = map
-
-        console.log("✅ Map initialized with center:", safeCenter, "zoom:", safeZoom)
+        setMapReady(true)
+      } catch (err) {
+        console.error("Map init failed:", err)
       }
-    } catch (error) {
-      console.error("❌ Map initialization error:", error)
     }
 
+    init()
+
     return () => {
-      try {
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.remove()
-          mapInstanceRef.current = null
-        }
-      } catch (error) {
-        console.error("❌ Map cleanup error:", error)
+      cancelled = true
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove()
+        mapInstanceRef.current = null
+        markersLayerRef.current = null
+        leafletRef.current = null
       }
     }
   }, [])
 
+  // Pan to new center when it changes (but not on initial mount)
   useEffect(() => {
-    if (!mapInstanceRef.current) return
-
-    // Validate coordinates before flying
-    if (!isValidCenter(safeCenter)) {
-      console.warn("⚠️ Invalid map center coordinates, skipping map update:", {
-        center: safeCenter,
-      })
+    if (!mapReady || !mapInstanceRef.current) return
+    
+    // Extra validation - ensure coordinates are valid numbers
+    const lat = centerLat
+    const lng = centerLng
+    
+    // Strict validation for NaN and invalid coordinates
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      console.warn('⚠️ LeafletMap: Invalid coordinate types', { lat, lng })
       return
     }
-
-    try {
-      mapInstanceRef.current.flyTo(safeCenter, safeZoom, {
-        duration: 0.8,
-        easeLinearity: 0.25,
-      })
-    } catch (error) {
-      console.error("❌ Map flyTo error:", error, { center: safeCenter, zoom: safeZoom })
+    if (!isFinite(lat) || !isFinite(lng) || Number.isNaN(lat) || Number.isNaN(lng)) {
+      console.warn('⚠️ LeafletMap: Non-finite coordinates', { lat, lng })
+      return
     }
-  }, [safeCenter, safeZoom])
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      console.warn('⚠️ LeafletMap: Coordinates out of range', { lat, lng })
+      return
+    }
+    
+    // Skip flyTo on initial mount - the map is already centered
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      prevCenterRef.current = [lat, lng]
+      return
+    }
+    
+    // Skip if center hasn't actually changed
+    if (prevCenterRef.current && 
+        prevCenterRef.current[0] === lat && 
+        prevCenterRef.current[1] === lng) {
+      return
+    }
+    
+    prevCenterRef.current = [lat, lng]
+    
+    try {
+      mapInstanceRef.current.flyTo([lat, lng], safeZoom, { duration: 0.8 })
+    } catch (err) {
+      console.error('❌ LeafletMap flyTo error:', err)
+    }
+  }, [centerLat, centerLng, safeZoom, mapReady])
 
+  // Update markers when they change
   useEffect(() => {
-    if (!mapInstanceRef.current || !markersLayerRef.current) return
+    if (!mapReady || !markersLayerRef.current || !leafletRef.current) return
 
-    try {
-      const L = require("leaflet")
-      markersLayerRef.current.clearLayers()
+    const L = leafletRef.current
+    markersLayerRef.current.clearLayers()
 
-      let validMarkerCount = 0
+    const valid = markers.filter((m) => {
+      if (typeof m.lat !== "number" || typeof m.lon !== "number") return false
+      if (!isFinite(m.lat) || !isFinite(m.lon)) return false
+      return m.lat >= -90 && m.lat <= 90 && m.lon >= -180 && m.lon <= 180
+    })
 
-      markers.forEach((marker) => {
-        try {
-          // Validate marker coordinates
-          if (marker.lat === undefined || marker.lon === undefined) {
-            console.debug(`ℹ️ Marker missing coordinates, will geocode later: "${marker.title}"`)
-            return
-          }
+    if (valid.length === 0) return
 
-          // Check if coordinates are valid numbers
-          if (typeof marker.lat !== "number" || typeof marker.lon !== "number") {
-            console.warn(
-              `⚠️ Marker has non-numeric coordinates:`,
-              { title: marker.title, lat: typeof marker.lat, lon: typeof marker.lon }
-            )
-            return
-          }
+    const icon = L.divIcon({
+      className: "custom-marker",
+      html: '<div style="font-size:28px;filter:drop-shadow(0 0 8px #ff8c00);">📍</div>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 28],
+    })
 
-          if (!isFinite(marker.lat) || !isFinite(marker.lon)) {
-            console.warn(`⚠️ Marker has invalid (NaN/Infinity) coordinates:`, {
-              title: marker.title,
-              lat: marker.lat,
-              lon: marker.lon,
-            })
-            return
-          }
+    valid.forEach((m) => {
+      L.marker([m.lat!, m.lon!], { icon })
+        .bindPopup(`
+          <div style="background:#111;padding:10px;border-radius:6px;border:2px solid #ff8c00;min-width:180px;">
+            <div style="color:#ff8c00;font-weight:bold;font-size:13px;">📅 ${m.year || "Unknown"}</div>
+            <div style="color:#fff;font-size:12px;margin:4px 0;">${m.title || ""}</div>
+            <div style="color:#aaa;font-size:11px;">${m.desc || ""}</div>
+            ${m.place ? `<div style="color:#ff8c00;font-size:10px;margin-top:4px;">📍 ${m.place}</div>` : ""}
+          </div>
+        `)
+        .addTo(markersLayerRef.current)
+    })
 
-          // Validate bounds
-          if (marker.lat < -90 || marker.lat > 90 || marker.lon < -180 || marker.lon > 180) {
-            console.warn(`⚠️ Marker coordinates out of bounds:`, {
-              title: marker.title,
-              lat: marker.lat,
-              lon: marker.lon,
-            })
-            return
-          }
-
-          const icon = L.divIcon({
-            className: "custom-marker",
-            html: `<div style="font-size: 32px; filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.8));">📍</div>`,
-            iconSize: [32, 32],
-            iconAnchor: [16, 32],
-          })
-
-          const leafletMarker = L.marker([marker.lat, marker.lon], { icon })
-            .bindPopup(
-              `<div style="background: #1a1a1a; padding: 12px; border-radius: 8px; border: 2px solid #ff8c00; min-width: 200px;">
-                <div style="font-family: 'JetBrains Mono', monospace; font-weight: bold; color: #ff8c00; font-size: 14px; margin-bottom: 6px;">📅 ${marker.year}</div>
-                <div style="font-weight: 600; color: #ffffff; font-size: 13px; margin-bottom: 4px;">${marker.title}</div>
-                <div style="color: #cccccc; font-size: 11px; line-height: 1.4;">${marker.desc}</div>
-                ${marker.place ? `<div style="color: #ff8c00; font-size: 10px; margin-top: 6px;">📍 ${marker.place}</div>` : ''}
-              </div>`,
-              {
-                className: 'custom-popup',
-                maxWidth: 300,
-              }
-            )
-
-          leafletMarker.addTo(markersLayerRef.current)
-          validMarkerCount++
-        } catch (markerError) {
-          console.error(`❌ Error adding marker for "${marker.title}":`, markerError)
-        }
-      })
-
-      console.log(`📍 Rendered ${validMarkerCount}/${markers.length} valid markers`)
-
-      // Draw connecting lines between markers with Halloween theme
-      try {
-        const validCoords = markers
-          .filter((m) => {
-            if (m.lat === undefined || m.lon === undefined) return false
-            if (!isFinite(m.lat) || !isFinite(m.lon)) return false
-            return m.lat >= -90 && m.lat <= 90 && m.lon >= -180 && m.lon <= 180
-          })
-          .map((m) => [m.lat!, m.lon!] as [number, number])
-
-        if (validCoords.length > 1) {
-          L.polyline(validCoords, {
-            color: "#FF8C00",
-            weight: 3,
-            opacity: 0.8,
-            dashArray: "10, 15",
-          }).addTo(markersLayerRef.current)
-          console.log(`🔗 Drew connecting line through ${validCoords.length} locations`)
-        }
-      } catch (polylineError) {
-        console.error("❌ Error drawing polyline:", polylineError)
-      }
-    } catch (error) {
-      console.error("❌ Error in marker rendering effect:", error)
+    if (valid.length > 1) {
+      L.polyline(
+        valid.map((m) => [m.lat!, m.lon!]),
+        { color: "#FF8C00", weight: 2, opacity: 0.6, dashArray: "6,10" }
+      ).addTo(markersLayerRef.current)
     }
-  }, [markers])
+  }, [markers, mapReady])
 
-  return <div ref={mapRef} className="w-full h-full bg-black" />
+  return (
+    <div className="relative w-full h-full bg-black">
+      {!mapReady && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black">
+          <div className="text-orange-500 text-sm">Loading map...</div>
+        </div>
+      )}
+      <div
+        ref={mapContainerRef}
+        className="w-full h-full"
+        style={{ opacity: mapReady ? 1 : 0, transition: "opacity 0.3s" }}
+      />
+    </div>
+  )
 }
+
+export default memo(LeafletMapComponent)

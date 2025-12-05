@@ -13,7 +13,8 @@ export interface MapSyncCallbacks {
 }
 
 export function useMapSync(callbacks: MapSyncCallbacks) {
-  const { activeLocation, locationHistory } = useSessionStore()
+  const activeLocation = useSessionStore((state) => state.activeLocation)
+  const locationHistory = useSessionStore((state) => state.locationHistory)
   const prevLocationRef = useRef<TimelineItem | null>(null)
   const callbacksRef = useRef(callbacks)
   

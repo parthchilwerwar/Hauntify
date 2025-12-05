@@ -151,6 +151,42 @@
   }
 }
 
+/* Map marker pulse animation */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Leaflet popup styling */
+.leaflet-popup-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+}
+
+.leaflet-popup-tip {
+  background: #ff8c00 !important;
+}
+
+.custom-popup .leaflet-popup-close-button {
+  color: #ff8c00 !important;
+}
+
 ::selection {
   background-color: #ff6600;
   color: #ffffff;
