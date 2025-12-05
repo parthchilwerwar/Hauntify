@@ -18,8 +18,9 @@ An interactive AI-powered horror storytelling app that weaves terrifying narrati
 
 ## Features
 
+- **🤖 2-Stage AI Pipeline**: Groq LLaMA 3.3 70B generates stories + Groq GPT-OSS-120B ensures quality (all via single Groq API key!)
 - **🎙️ AI Voice Narration**: Real-time text-to-speech using ElevenLabs with 4 voice types (Narrator, Villain, Ghost, Historian)
-- **💬 Streaming AI Chat**: Real-time responses from Groq's LLaMA 3.3 70B model
+- **💬 Streaming AI Chat**: Real-time token-by-token responses with Server-Sent Events
 - **🎵 Audio Player**: Full playback controls with play/pause, skip, timeline scrubber, volume control
 - **📜 Interactive Timeline**: Events appear inline as the AI narrates with clickable cards
 - **🗺️ Live Map Sync**: Locations automatically geocoded and displayed on an interactive map
@@ -30,15 +31,16 @@ An interactive AI-powered horror storytelling app that weaves terrifying narrati
 ## Tech Stack
 
 - **Framework**: Next.js 16 (App Router, Node runtime) with React 19
-- **AI**: Groq API (llama-3.3-70b-versatile)
+- **AI Generation**: Groq API with LLaMA 3.3 70B Versatile (story generation)
+- **AI Quality**: Groq API with GPT-OSS-120B (quality enhancement)
 - **Voice**: ElevenLabs Text-to-Speech API (with Web Speech API fallback)
 - **Maps**: Leaflet + OpenStreetMap
 - **Geocoding**: Nominatim (OSM)
-- **State**: Zustand
-- **Audio**: HTML5 Audio API with custom queue manager
-- **Styling**: Tailwind CSS v4 (black-orange-white theme)
-- **Validation**: Zod
-- **Streaming**: Server-Sent Events (NDJSON)
+- **State**: Zustand with localStorage persistence
+- **Audio**: HTML5 Audio API with custom AudioQueueManager
+- **Styling**: Tailwind CSS v4 (black-orange-white horror theme)
+- **Validation**: Zod schemas for runtime validation
+- **Streaming**: Server-Sent Events (SSE) with NDJSON format
 
 ## Setup
 
@@ -52,11 +54,11 @@ npm install
 cp .env.example .env.local
 
 # 3. Add your API keys to .env.local
-# Get a free Groq key at: https://console.groq.com
+# Get a free Groq key at: https://console.groq.com (REQUIRED)
 # Get ElevenLabs key at: https://elevenlabs.io (optional, 10k chars/month free)
 # Edit .env.local and set:
-#   GROQ_API_KEY=gsk_your_key_here
-#   ELEVENLABS_API_KEY=your_elevenlabs_key (optional)
+#   GROQ_API_KEY=gsk_your_key_here          # Required for AI generation
+#   ELEVENLABS_API_KEY=your_elevenlabs_key  # Optional (falls back to Web Speech API)
 
 # 4. Verify setup
 npm run verify
@@ -89,7 +91,12 @@ See [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) for:
 
 ### POST /api/chat
 
-Streaming chat endpoint that accepts messages and returns Server-Sent Events.
+**2-Stage AI Pipeline** - Streaming chat endpoint powered entirely by Groq API.
+
+**Pipeline Flow:**
+1. **Stage 1**: Groq LLaMA 3.3 70B generates horror story (fast, creative)
+2. **Stage 2**: Groq GPT-OSS-120B quality checks and enhances (ensures scariness)
+3. **Output**: Enhanced story streamed to client with timeline markers
 
 **Request:**
 ```json
@@ -102,10 +109,27 @@ Streaming chat endpoint that accepts messages and returns Server-Sent Events.
 
 **Response:** NDJSON stream
 ```json
-{"type":"token","data":"The Salem"}
-{"type":"timeline","data":{"year":1692,"title":"The Trials Begin","desc":"...","place":"Salem, Massachusetts"}}
+{"type":"token","data":"In the year 1692, in Salem, Massachusetts, United States..."}
+{"type":"timeline","data":{"year":1692,"title":"The Trials Begin","desc":"Accusations spread through Salem Village","place":"Salem, Massachusetts, United States"}}
+{"type":"quality_report","data":{"score":8,"passed":true,"enhancements":[]}}
 {"type":"done","data":null}
 ```
+
+**Event Types:**
+- `token` - Story text chunks (streamed word-by-word)
+- `timeline` - Historical event markers for map visualization
+- `quality_report` - Quality score and enhancement metadata
+- `error` - Error messages if pipeline fails
+- `done` - Stream completion signal
+
+**System Prompt Features:**
+- Enforces "In the year [YEAR], in [LOCATION]..." opening format
+- Generates 1-2 paragraph stories (140-170 words each)
+- Includes natural sound effects: [whispers], [exhales], [shhhh...]
+- Embeds ##TIMELINE## markers with geocodable locations
+- Dark, ominous, cinematic horror tone
+
+See [QUALITY_PIPELINE.md](./QUALITY_PIPELINE.md) for detailed pipeline documentation.
 
 ### POST /api/voice
 
@@ -178,9 +202,11 @@ Rate limited to 1 req/sec per IP. Results cached for 30 days.
 │   │   ├── audioQueue.ts          # Audio queue manager
 │   │   └── paragraphDetector.ts   # Paragraph extraction (100-200 words)
 │   ├── server/
-│   │   ├── groqChat.ts            # Groq API integration
-│   │   ├── timeline.ts            # Timeline extraction
-│   │   └── geocode.ts             # Geocoding service
+│   │   ├── groqChat.ts            # Groq API integration (LLaMA 3.3 70B)
+│   │   ├── enhancedPipeline.ts    # 2-stage pipeline orchestration
+│   │   ├── storyEnhancer.ts       # Quality gate (GPT-OSS-120B)
+│   │   ├── timeline.ts            # Timeline extraction & parsing
+│   │   └── geocode.ts             # Geocoding service with caching
 │   ├── store/
 │   │   └── session.ts             # Zustand state (messages, audio, timeline)
 │   ├── lib/
@@ -198,23 +224,48 @@ Rate limited to 1 req/sec per IP. Results cached for 30 days.
 
 1. **User sends message** via ChatInput with selected voice type
 2. **useChatStream hook** calls `/api/chat` with message history
-3. **Server streams response** from Groq API token by token
-4. **Paragraph detector** monitors stream for complete 100-200 word paragraphs
-5. **Voice generation** triggered automatically when paragraph completes:
-   - Calls `/api/voice` with paragraph text and voice type
+3. **2-Stage AI Pipeline** (all via Groq API):
+   - **Stage 1**: Groq LLaMA 3.3 70B generates horror story draft
+   - **Stage 2**: Groq GPT-OSS-120B analyzes quality (score 1-10)
+   - If score ≥ 7: Story passes through unchanged
+   - If score < 7: Story enhanced with better atmosphere, pacing, tension
+4. **Server streams enhanced story** token by token via Server-Sent Events
+5. **Timeline extraction** happens server-side:
+   - Regex parser detects `##TIMELINE##` markers
+   - JSON validation with Zod schemas
+   - Timeline events sent as separate NDJSON events
+6. **Voice generation** triggered automatically when story completes:
+   - Full story (without timeline markers) sent to `/api/voice`
    - ElevenLabs generates MP3 audio (or Web Speech API fallback)
-   - Audio blob added to queue with duration
-6. **Audio player** automatically plays queued audio continuously
-7. **Timeline parser** detects `##TIMELINE##` markers in AI output
-8. **Timeline events** rendered as cards in chat
-9. **useMapSync hook** geocodes locations and updates map
-10. **Leaflet map** displays animated markers and paths
-11. **Session persisted** to localStorage (messages, timeline, audio URLs)
+   - Audio blob added to queue with estimated duration
+7. **Audio player** automatically plays queued audio continuously
+8. **Timeline events** rendered as vertical cards in chat with connecting lines
+9. **useMapSync hook** geocodes locations via Nominatim API (1 req/sec, 30-day cache)
+10. **Leaflet map** displays animated orange markers with polyline paths
+11. **Session persisted** to localStorage (messages, timeline, audio blobs, coordinates)
+
+### 2-Stage AI Pipeline
+
+```
+User Prompt
+    ↓
+[Stage 1] Groq LLaMA 3.3 70B
+    → Fast generation of horror story draft
+    ↓
+[Stage 2] Groq GPT-OSS-120B
+    → Analyzes scariness (score 1-10)
+    → If score ≥ 7: Pass through ✓
+    → If score < 7: Enhance story ⚡
+    ↓
+Enhanced Story + Timeline Markers
+    ↓
+Stream to Client (SSE/NDJSON)
+```
 
 ### Voice Generation Pipeline
 
 ```
-AI Token Stream → Paragraph Detector (100-200 words) → ElevenLabs API → MP3 Blob → Audio Queue → Auto-play
+Complete Story → Remove Timeline Markers → ElevenLabs API → MP3 Blob → Audio Queue → Auto-play
 ```
 
 ### Audio Player Features
@@ -226,15 +277,105 @@ AI Token Stream → Paragraph Detector (100-200 words) → ElevenLabs API → MP
 - **Voice switching**: Change voice type mid-story (affects new paragraphs)
 - **Persistence**: Audio blobs saved to localStorage for session resume
 
+## Groq API Implementation
+
+### Why Groq?
+
+Hauntify uses **Groq API exclusively** for all AI generation:
+
+- **Ultra-Fast Inference**: Groq's LPU (Language Processing Unit) delivers 10x faster token generation than traditional GPUs
+- **Cost-Effective**: ~$0.0015 per story (both stages combined)
+- **Single API Key**: Both LLaMA and GPT models accessible with one `GROQ_API_KEY`
+- **Streaming Support**: Native Server-Sent Events for real-time token streaming
+- **High Quality**: LLaMA 3.3 70B for creative generation + GPT-OSS-120B for quality assurance
+
+### Implementation Files
+
+**`src/server/groqChat.ts`**
+- Groq API integration with LLaMA 3.3 70B Versatile
+- 200+ line system prompt for horror storytelling
+- Streaming via `fetch()` with Server-Sent Events
+- NDJSON event formatting (token, timeline, error, done)
+- Configuration: temperature 0.8, max_tokens 600, top_p 0.9
+
+**`src/server/enhancedPipeline.ts`**
+- Orchestrates 2-stage pipeline
+- Stage 1: Collects full story from Groq LLaMA
+- Stage 2: Sends to Groq GPT for quality check
+- Reconstructs story with timeline markers
+- Streams enhanced result to client
+
+**`src/server/storyEnhancer.ts`**
+- Quality gate using Groq GPT-OSS-120B
+- Analyzes: atmosphere, pacing, tension, imagery, ending
+- Scores 1-10 (≥7 passes, <7 enhanced)
+- Returns enhanced story with improvement notes
+
+**`app/api/chat/route.ts`**
+- Next.js API route (Node.js runtime)
+- Validates request with Zod schema
+- Calls `enhancedStoryPipeline()` with Groq API key
+- Returns SSE stream with proper headers
+
+### System Prompt Highlights
+
+The 200+ line system prompt in `groqChat.ts` enforces:
+
+1. **Opening Format**: "In the year [YEAR], in [LOCATION], ..."
+2. **Story Length**: 1-2 paragraphs, 140-170 words each
+3. **Tone**: Dark, ominous, cinematic, fear-inducing
+4. **Sound Effects**: [whispers], [exhales], [shhhh...], [laughs]
+5. **Location Format**: "City, State, Country" or "City, Country"
+6. **Timeline Markers**: ##TIMELINE## with JSON data
+7. **City Variety**: 100+ cities across 20+ countries
+
+### Quality Enhancement Criteria
+
+Groq GPT-OSS-120B evaluates stories on:
+
+- **Atmosphere** (1-10): Sense of dread and unease
+- **Pacing** (1-10): Tension building and rhythm
+- **Tension** (1-10): Suspense and fear escalation
+- **Imagery** (1-10): Vivid sensory details
+- **Ending** (1-10): Impact and lingering dread
+
+**Overall Score** = Average of 5 criteria
+- Score ≥ 7: Story passes unchanged
+- Score < 7: Story enhanced with specific improvements
+
+### Disabling Quality Enhancement (Optional)
+
+If you want faster responses without quality checking:
+
+1. Edit `app/api/chat/route.ts`
+2. Replace `enhancedStoryPipeline` with `streamGroqToNDJSON`
+3. Import from `@/src/server/groqChat`
+4. No API key changes needed (still just Groq)
+
+**Trade-off**: Stories will be faster (2-3s vs 3-5s) but quality may vary.
+
+See [QUALITY_PIPELINE.md](./QUALITY_PIPELINE.md) for detailed comparison.
+
 ## Timeline Format
 
-The AI is instructed to emit timeline events in this format:
+The Groq system prompt instructs the AI to emit timeline events in this format:
 
 ```
-##TIMELINE## {"year":1692,"title":"The Trials Begin","desc":"Accusations spread through Salem Village","place":"Salem, Massachusetts"}
+##TIMELINE## {"year":1692,"title":"The Trials Begin","desc":"Accusations spread through Salem Village","place":"Salem, Massachusetts, United States"}
 ```
 
-These are parsed server-side and sent as separate events to the client.
+**Processing:**
+1. Timeline markers are embedded in the story by Groq LLaMA 3.3 70B
+2. Server-side regex parser extracts markers: `/##TIMELINE##\s*\{[^}]+\}/g`
+3. JSON validated with Zod schema (year, title, desc, place)
+4. Markers removed from story before voice synthesis
+5. Timeline events sent as separate NDJSON events to client
+6. Client geocodes locations and displays on map
+
+**Location Format Requirements:**
+- Must be geocodable: "City, Country" or "City, State, Country"
+- Examples: "Salem, Massachusetts, United States", "London, United Kingdom"
+- System prompt includes 100+ cities across 20+ countries for variety
 
 ## Voice Narration
 
@@ -338,13 +479,34 @@ Tested on: Vercel, Railway, Render
 
 ## Rate Limits & Costs
 
-- **Groq**: Free tier available, check your plan limits at console.groq.com
-- **ElevenLabs**: 
-  - Free tier: 10,000 characters/month
-  - Paid plans start at $5/month for 30,000 characters
-  - Average story: 500-1000 characters
-- **Nominatim**: 1 request/second (enforced by our API)
-- **OSM Tiles**: Fair use policy (consider MapTiler/Stadia for production)
+### Groq API (Required)
+- **Free Tier**: Available at https://console.groq.com
+- **Models Used**:
+  - LLaMA 3.3 70B Versatile (story generation)
+  - GPT-OSS-120B (quality enhancement)
+- **Cost per Story** (average 200 words):
+  - Stage 1 (LLaMA): ~$0.0005 per story
+  - Stage 2 (GPT): ~$0.001 per story
+  - **Total**: ~$0.0015 per story (~667 stories per $1)
+- **Speed**: 3-5 seconds total (both stages)
+- **Single API Key**: Both stages use the same `GROQ_API_KEY`
+
+### ElevenLabs API (Optional)
+- **Free Tier**: 10,000 characters/month
+- **Paid Plans**: 
+  - Starter: $5/month - 30,000 characters
+  - Creator: $22/month - 100,000 characters
+  - Pro: $99/month - 500,000 characters
+- **Average Story**: 500-1000 characters
+- **Fallback**: Web Speech API (browser-based, free, unlimited)
+
+### Nominatim Geocoding (Free)
+- **Rate Limit**: 1 request/second (enforced by our API)
+- **Caching**: 30-day localStorage cache
+- **Fair Use**: OpenStreetMap data, respect usage policy
+
+### OpenStreetMap Tiles (Free)
+- **Fair Use Policy**: Consider MapTiler/Stadia for high-traffic production
 
 ## Security
 
@@ -376,10 +538,16 @@ MIT
 ### Data Flow
 1. User message → ChatInput
 2. useChatStream → /api/chat
-3. Groq API → Streaming response
-4. Timeline extraction → Store update
-5. useMapSync → Geocoding → Map update
-6. LocalStorage persistence
+3. 2-Stage Pipeline:
+   - Groq LLaMA 3.3 70B → Story generation
+   - Groq GPT-OSS-120B → Quality enhancement
+4. Server-side timeline extraction (regex + Zod validation)
+5. SSE/NDJSON streaming → Client
+6. Timeline events → Store update
+7. useMapSync → Nominatim geocoding → Map update
+8. Voice generation → ElevenLabs/Web Speech API
+9. Audio queue → AudioQueueManager → Playback
+10. LocalStorage persistence (messages, timeline, audio, coordinates)
 
 ### State Management (Zustand)
 - **Messages:** Array of chat messages
@@ -405,8 +573,10 @@ This project was developed using Kiro IDE, an AI-powered development environment
 ### Development Tools
 - **Primary IDE**: [Kiro](https://kiro.ai) - AI-assisted development environment
 - **Initial Design**: v0.dev - UI component generation
-- **AI Models**: Groq LLaMA 3.3 70B for storytelling
-- **Voice Synthesis**: ElevenLabs TTS API
+- **AI Models**: 
+  - Groq LLaMA 3.3 70B Versatile (story generation)
+  - Groq GPT-OSS-120B (quality enhancement)
+- **Voice Synthesis**: ElevenLabs TTS API with Web Speech API fallback
 
 ### Open Source
 This project is open source and available under the MIT License. Contributions are welcome!
