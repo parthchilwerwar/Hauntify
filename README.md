@@ -149,8 +149,8 @@
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm or pnpm
+- Node.js 20.9+ (required by Next.js 16)
+- npm or pnpm 10
 - [Groq API Key](https://console.groq.com) (free)
 - [ElevenLabs API Key](https://elevenlabs.io) (optional, free tier available)
 
@@ -162,7 +162,9 @@ git clone https://github.com/parthchilwerwar/Hauntify.git
 cd Hauntify
 
 # Install dependencies
-npm install
+npm ci
+# Or, with pnpm 10:
+# pnpm install --frozen-lockfile
 
 # Set up environment variables
 cp .env.example .env.local
@@ -188,6 +190,20 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) 🎃
+
+### Local Checks
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+The unit tests mock external requests and do not need API keys. `npm run test:api`
+is a separate integration check that requires a running server and configured API keys.
+When updating dependencies, update `package-lock.json` and regenerate `pnpm-lock.yaml`
+with `pnpm import` so both supported installation paths use the same versions.
 
 ## 🏗️ Architecture
 

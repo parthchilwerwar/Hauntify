@@ -30,6 +30,7 @@ function LeafletMapComponent({ markers, center, zoom }: LeafletMapProps) {
     ? center[1] 
     : DEFAULT_CENTER[1]
   const safeZoom = typeof zoom === "number" && isFinite(zoom) && zoom > 0 ? zoom : DEFAULT_ZOOM
+  const initialViewRef = useRef({ center: [centerLat, centerLng] as [number, number], zoom: safeZoom })
 
   // Initialize map only once
   useEffect(() => {
@@ -48,8 +49,8 @@ function LeafletMapComponent({ markers, center, zoom }: LeafletMapProps) {
         leafletRef.current = L
 
         const map = L.map(mapContainerRef.current, {
-          center: [centerLat, centerLng],
-          zoom: safeZoom,
+          center: initialViewRef.current.center,
+          zoom: initialViewRef.current.zoom,
           zoomControl: false,
           attributionControl: false,
         })

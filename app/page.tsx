@@ -115,7 +115,7 @@ const LandingPage = () => {
             Your Personal <span className="text-orange-400">Horror Story Generator</span>
           </p>
           <p className="text-lg md:text-xl text-zinc-300 mb-8 drop-shadow-lg">
-            Just type what scares you. We'll turn it into a spine-chilling experience.
+            Just type what scares you. We&apos;ll turn it into a spine-chilling experience.
           </p>
           
           <Button 
@@ -171,7 +171,7 @@ const LandingPage = () => {
             <h2 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight text-white">
               From Idea to Nightmare in Seconds
             </h2>
-            <p className="text-lg text-zinc-400">Here's how we turn your fears into a fully immersive experience</p>
+            <p className="text-lg text-zinc-400">Here&apos;s how we turn your fears into a fully immersive experience</p>
           </div>
           
           <AnimatedTimeline steps={steps} />
@@ -223,7 +223,7 @@ const LandingPage = () => {
               Ready to Scare Yourself?
             </h2>
             <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-              Type one sentence about what scares you most. We'll handle the rest. Free. No signup. Just pure horror.
+              Type one sentence about what scares you most. We&apos;ll handle the rest. Free. No signup. Just pure horror.
             </p>
           </div>
           
