@@ -17,7 +17,99 @@ export function useMapSync(callbacks: MapSyncCallbacks) {
   const locationHistory = useSessionStore((state) => state.locationHistory)
   const prevLocationRef = useRef<TimelineItem | null>(null)
   const callbacksRef = useRef(callbacks)
-  
+
+  async function geocodeAndUpdate(item: TimelineItem) {
+    if (!item.place) {
+      ErrorHandler.logWarning("MapSync", "Cannot geocode location without place name", { item })
+      return
+    }
+
+    console.log(`🗺️ Geocoding location: "${item.place}"`)
+
+    try {
+      const response = await fetch(`/api/geocode?q=${encodeURIComponent(item.place)}`)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(
+          `Geocoding API returned ${response.status}: ${errorText}`
+        )
+      }
+
+      const coords = await response.json()
+
+      // Validate geocoded coordinates
+      if (!coords.lat || !coords.lon) {
+        throw new Error(
+          `Geocoding returned invalid coordinates: lat=${coords.lat}, lon=${coords.lon}`
+        )
+      }
+
+      if (!isValidLatLngPair(coords.lat, coords.lon)) {
+        throw new Error(
+          `Geocoded coordinates out of valid range: [${coords.lat}, ${coords.lon}]`
+        )
+      }
+
+      const updated: TimelineItem = {
+        ...item,
+        lat: coords.lat,
+        lon: coords.lon,
+      }
+
+      console.log(`✅ Geocoded "${item.place}" to [${coords.lat}, ${coords.lon}]`)
+
+      try {
+        // Update the store with geocoded coordinates
+        const store = useSessionStore.getState()
+        const timelineIndex = store.timeline.findIndex(
+          (t) => t.title === item.title && t.year === item.year
+        )
+
+        if (timelineIndex !== -1) {
+          // Create new timeline array with updated item
+          const newTimeline = [...store.timeline]
+          newTimeline[timelineIndex] = updated
+
+          // Check if already in locationHistory
+          const historyExists = store.locationHistory.some(
+            (h) => h.title === updated.title && h.year === updated.year
+          )
+
+          const newLocationHistory = historyExists
+            ? store.locationHistory
+            : [...store.locationHistory, updated]
+
+          // Update the store
+          useSessionStore.setState({
+            timeline: newTimeline,
+            locationHistory: newLocationHistory,
+            activeLocation: updated,
+          })
+
+          // Notify callback with updated coordinates
+          callbacksRef.current.onLocationUpdate(updated)
+        }
+      } catch (storeError) {
+        ErrorHandler.logError(
+          "MapSync_StoreUpdate",
+          storeError instanceof Error ? storeError.message : "Failed to update store with geocoded coordinates",
+          "major",
+          { location: item.place },
+          storeError instanceof Error ? storeError : undefined
+        )
+      }
+    } catch (error) {
+      ErrorHandler.logError(
+        "MapSync_Geocode",
+        error instanceof Error ? error.message : "Geocoding failed",
+        "major",
+        { place: item.place, title: item.title },
+        error instanceof Error ? error : undefined
+      )
+    }
+  }
+
   // Keep callbacks ref up to date
   useEffect(() => {
     callbacksRef.current = callbacks
@@ -110,95 +202,5 @@ export function useMapSync(callbacks: MapSyncCallbacks) {
     }
   }, [locationHistory])
 
-  async function geocodeAndUpdate(item: TimelineItem) {
-    if (!item.place) {
-      ErrorHandler.logWarning("MapSync", "Cannot geocode location without place name", { item })
-      return
-    }
 
-    console.log(`🗺️ Geocoding location: "${item.place}"`)
-
-    try {
-      const response = await fetch(`/api/geocode?q=${encodeURIComponent(item.place)}`)
-      
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(
-          `Geocoding API returned ${response.status}: ${errorText}`
-        )
-      }
-
-      const coords = await response.json()
-
-      // Validate geocoded coordinates
-      if (!coords.lat || !coords.lon) {
-        throw new Error(
-          `Geocoding returned invalid coordinates: lat=${coords.lat}, lon=${coords.lon}`
-        )
-      }
-
-      if (!isValidLatLngPair(coords.lat, coords.lon)) {
-        throw new Error(
-          `Geocoded coordinates out of valid range: [${coords.lat}, ${coords.lon}]`
-        )
-      }
-
-      const updated: TimelineItem = {
-        ...item,
-        lat: coords.lat,
-        lon: coords.lon,
-      }
-
-      console.log(`✅ Geocoded "${item.place}" to [${coords.lat}, ${coords.lon}]`)
-
-      try {
-        // Update the store with geocoded coordinates
-        const store = useSessionStore.getState()
-        const timelineIndex = store.timeline.findIndex(
-          (t) => t.title === item.title && t.year === item.year
-        )
-
-        if (timelineIndex !== -1) {
-          // Create new timeline array with updated item
-          const newTimeline = [...store.timeline]
-          newTimeline[timelineIndex] = updated
-
-          // Check if already in locationHistory
-          const historyExists = store.locationHistory.some(
-            (h) => h.title === updated.title && h.year === updated.year
-          )
-
-          const newLocationHistory = historyExists
-            ? store.locationHistory
-            : [...store.locationHistory, updated]
-
-          // Update the store
-          useSessionStore.setState({
-            timeline: newTimeline,
-            locationHistory: newLocationHistory,
-            activeLocation: updated,
-          })
-
-          // Notify callback with updated coordinates
-          callbacksRef.current.onLocationUpdate(updated)
-        }
-      } catch (storeError) {
-        ErrorHandler.logError(
-          "MapSync_StoreUpdate",
-          storeError instanceof Error ? storeError.message : "Failed to update store with geocoded coordinates",
-          "major",
-          { location: item.place },
-          storeError instanceof Error ? storeError : undefined
-        )
-      }
-    } catch (error) {
-      ErrorHandler.logError(
-        "MapSync_Geocode",
-        error instanceof Error ? error.message : "Geocoding failed",
-        "major",
-        { place: item.place, title: item.title },
-        error instanceof Error ? error : undefined
-      )
-    }
-  }
 }

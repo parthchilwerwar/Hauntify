@@ -19,6 +19,71 @@ export function useChatStream() {
   const addAudioToQueue = useSessionStore((state) => state.addAudioToQueue)
   const setGeneratingVoice = useSessionStore((state) => state.setGeneratingVoice)
 
+  /**
+   * Generate voice for the entire story (all paragraphs) at once
+   */
+  const generateVoiceForFullStory = useCallback(async (fullText: string) => {
+    if (!fullText.trim()) return
+
+    // Remove timeline markers from the full story before sending to voice API
+    const cleanStory = fullText.replace(/##TIMELINE##[^\n]*\n?/g, "").trim()
+
+    if (!cleanStory) {
+      console.log("⚠️ Story is empty after removing timeline markers, skipping voice generation")
+      return
+    }
+
+    // Remove brackets from audio cues (e.g. [whispers] → whispers, [shhhh...] → hmmm...)
+    // This keeps the sound effects but makes them realistic by removing the brackets
+    // Example: "The door creaked [shhhh...]" becomes "The door creaked shhhh..." (sounds like actual audio)
+    const ttsText = cleanStory
+      .replace(/\[([^\]]+)\]/g, "$1")  // Replace [content] with content (removes brackets)
+      .replace(/\s{2,}/g, " ")         // Clean up extra spaces
+      .trim()
+
+    if (!ttsText) {
+      console.log("⚠️ Story empty after removing audio cues, skipping voice generation")
+      return
+    }
+
+    console.log(`🎤 Generating voice for FULL STORY:`)
+    console.log(`   - Original length: ${fullText.length} chars`)
+    console.log(`   - Clean story: ${cleanStory.length} chars`)
+    console.log(`   - TTS text: ${ttsText.length} chars`)
+    console.log(`   - Preview: "${ttsText.substring(0, 100)}..."`)
+
+    const storyId = `story_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+
+    try {
+      setGeneratingVoice(true)
+      console.log("🎙️ Starting ElevenLabs API call...")
+
+      // Send cleaned TTS-friendly text to the voice API (entire story at once)
+      const result = await generateSpeech(ttsText)
+
+      console.log(`✅ Voice generation complete:`)
+      console.log(`   - Audio URL: ${result.audioUrl.substring(0, 50)}...`)
+      console.log(`   - Duration: ${result.duration}s`)
+
+      const audioItem: AudioQueueItem = {
+        id: storyId,
+        paragraphId: storyId,
+        audioUrl: result.audioUrl,
+        duration: result.duration,
+        voiceType: "horror",
+        text: cleanStory, // Store the clean story without timeline markers (display)
+      }
+
+      console.log("📥 Adding audio to queue:", audioItem.id)
+      addAudioToQueue(audioItem)
+    } catch (error: any) {
+      console.error("❌ Voice generation failed:", error)
+      toast.error(error.message || "Voice generation failed. Please check your ElevenLabs API key.")
+    } finally {
+      setGeneratingVoice(false)
+    }
+  }, [addAudioToQueue, setGeneratingVoice])
+
   const sendMessage = useCallback(
     async (content: string) => {
       if (!content.trim()) return
@@ -145,73 +210,9 @@ export function useChatStream() {
         setStreaming(false)
       }
     },
-    [messages, addMessage, appendToLastMessage, addTimelineItem, setStreaming, addAudioToQueue, setGeneratingVoice]
+    [messages, addMessage, appendToLastMessage, addTimelineItem, setStreaming, generateVoiceForFullStory]
   )
 
-  /**
-   * Generate voice for the entire story (all paragraphs) at once
-   */
-  const generateVoiceForFullStory = async (fullText: string) => {
-    if (!fullText.trim()) return
-
-    // Remove timeline markers from the full story before sending to voice API
-    const cleanStory = fullText.replace(/##TIMELINE##[^\n]*\n?/g, "").trim()
-
-    if (!cleanStory) {
-      console.log("⚠️ Story is empty after removing timeline markers, skipping voice generation")
-      return
-    }
-
-    // Remove brackets from audio cues (e.g. [whispers] → whispers, [shhhh...] → hmmm...)
-    // This keeps the sound effects but makes them realistic by removing the brackets
-    // Example: "The door creaked [shhhh...]" becomes "The door creaked shhhh..." (sounds like actual audio)
-    const ttsText = cleanStory
-      .replace(/\[([^\]]+)\]/g, "$1")  // Replace [content] with content (removes brackets)
-      .replace(/\s{2,}/g, " ")         // Clean up extra spaces
-      .trim()
-
-    if (!ttsText) {
-      console.log("⚠️ Story empty after removing audio cues, skipping voice generation")
-      return
-    }
-
-    console.log(`🎤 Generating voice for FULL STORY:`)
-    console.log(`   - Original length: ${fullText.length} chars`)
-    console.log(`   - Clean story: ${cleanStory.length} chars`)
-    console.log(`   - TTS text: ${ttsText.length} chars`)
-    console.log(`   - Preview: "${ttsText.substring(0, 100)}..."`)
-
-    const storyId = `story_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-
-    try {
-      setGeneratingVoice(true)
-      console.log("🎙️ Starting ElevenLabs API call...")
-
-      // Send cleaned TTS-friendly text to the voice API (entire story at once)
-      const result = await generateSpeech(ttsText)
-
-      console.log(`✅ Voice generation complete:`)
-      console.log(`   - Audio URL: ${result.audioUrl.substring(0, 50)}...`)
-      console.log(`   - Duration: ${result.duration}s`)
-
-      const audioItem: AudioQueueItem = {
-        id: storyId,
-        paragraphId: storyId,
-        audioUrl: result.audioUrl,
-        duration: result.duration,
-        voiceType: "horror",
-        text: cleanStory, // Store the clean story without timeline markers (display)
-      }
-
-      console.log("📥 Adding audio to queue:", audioItem.id)
-      addAudioToQueue(audioItem)
-    } catch (error: any) {
-      console.error("❌ Voice generation failed:", error)
-      toast.error(error.message || "Voice generation failed. Please check your ElevenLabs API key.")
-    } finally {
-      setGeneratingVoice(false)
-    }
-  }
 
   return {
     sendMessage,

@@ -15,30 +15,35 @@ interface AnimatedTimelineProps {
 }
 
 export function AnimatedTimeline({ steps }: AnimatedTimelineProps) {
+  return <TimelineAnimation key={JSON.stringify(steps)} steps={steps} />;
+}
+
+function TimelineAnimation({ steps: initialSteps }: AnimatedTimelineProps) {
+  // The wrapper key owns resets; equivalent arrays must not restart timers.
+  const [steps] = useState(initialSteps);
   const [visibleSteps, setVisibleSteps] = useState<number[]>([]);
   const [showText, setShowText] = useState<number[]>([]);
   const [lineHeight, setLineHeight] = useState(0);
 
   useEffect(() => {
-    // Reset animation when component mounts
-    setVisibleSteps([]);
-    setShowText([]);
-    setLineHeight(0);
+    const timers: ReturnType<typeof setTimeout>[] = [];
 
     // Animate steps sequentially
     steps.forEach((step, index) => {
       // Show step dot
-      setTimeout(() => {
+      timers.push(setTimeout(() => {
         setVisibleSteps((prev) => [...prev, step.number]);
         // Animate line to next step
         setLineHeight(((index + 1) / steps.length) * 100);
-      }, index * 800);
+      }, index * 800));
 
       // Show text after step dot
-      setTimeout(() => {
+      timers.push(setTimeout(() => {
         setShowText((prev) => [...prev, step.number]);
-      }, index * 800 + 400);
+      }, index * 800 + 400));
     });
+
+    return () => timers.forEach(clearTimeout);
   }, [steps]);
 
   return (

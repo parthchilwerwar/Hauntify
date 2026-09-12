@@ -1,12 +1,29 @@
 /**
  * Smoke tests for /api/chat endpoint
  */
-import { describe, it, expect, beforeEach } from "@jest/globals"
+import { NextRequest } from "next/server"
+import { POST } from "@/app/api/chat/route"
 
 describe("/api/chat endpoint", () => {
   it("should reject requests without GROQ_API_KEY", async () => {
-    // This is a smoke test - in real environment, API key should be set
-    expect(process.env.GROQ_API_KEY).toBeDefined()
+    const originalApiKey = process.env.GROQ_API_KEY
+    const fetchSpy = jest.spyOn(global, "fetch").mockRejectedValue(new Error("Unexpected external request"))
+    delete process.env.GROQ_API_KEY
+
+    try {
+      const response = await POST(new NextRequest("http://localhost/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ messages: [{ role: "user", content: "Hello" }] }),
+      }))
+
+      expect(response.status).toBe(500)
+      await expect(response.json()).resolves.toEqual({ error: "GROQ_API_KEY not configured" })
+      expect(fetchSpy).not.toHaveBeenCalled()
+    } finally {
+      fetchSpy.mockRestore()
+      if (originalApiKey === undefined) delete process.env.GROQ_API_KEY
+      else process.env.GROQ_API_KEY = originalApiKey
+    }
   })
 
   it("should validate message format", () => {
